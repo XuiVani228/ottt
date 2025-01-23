@@ -290,33 +290,46 @@
         });
 
         async function saveData() {
-        try {
-            const userId = tg.initDataUnsafe.user.id;
-            const dataToSend = { /* ... ваши данные ... */ };
+            try {
+                const userId = tg.initDataUnsafe.user.id;
 
-            console.log("Отправляемые данные:", dataToSend); // Добавлено
+                const dataToSend = {
+                    userId: userId,
+                    count: count,
+                    clickLimit: clickLimit,
+                    currentClicks: currentClicks,
+                    clickMultiplier: clickMultiplier,
+                    regenerationRate: regenerationRate,
+                    clickUpgrades: clickUpgrades.map(u => ({ id: u.id, bought: u.bought })),
+                    limitUpgrades: limitUpgrades.map(u => ({ id: u.id, bought: u.bought }))
+                };
 
-            const response = await fetch(SERVER_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(dataToSend)
-            });
+                console.log("Отправляемые данные (сохранение):", dataToSend);
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Не удалось получить JSON от сервера' }));
-                const errorMessage = `Ошибка сохранения данных: HTTP статус ${response.status}, ${response.statusText}, ${JSON.stringify(errorData)}`;
-                console.error(errorMessage);
-                alert(errorMessage); // Более информативное сообщение
-                throw new Error(errorMessage);
+                const response = await fetch(SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(dataToSend)
+                });
+
+                console.log("Ответ сервера (сохранение):", response); // Log raw response
+
+                if (!response.ok) {
+                    const message = `Ошибка сохранения данных: HTTP статус ${response.status}, ${response.statusText}`;
+                    console.error(message);
+                    alert(message);
+                    throw new Error(message);
+                }
+
+                const responseData = await response.json();
+                console.log('Данные успешно сохранены:', responseData);
+            } catch (error) {
+                console.error('Ошибка при сохранении данных:', error);
+                alert('Ошибка при сохранении данных! Пожалуйста, попробуйте еще раз. Подробности в консоли.');
             }
-
-            const responseData = await response.json();
-            console.log('Данные успешно сохранены:', responseData);
-        } catch (error) {
-            console.error('Ошибка при сохранении данных:', error);
-            alert('Ошибка при сохранении данных! Пожалуйста, попробуйте еще раз. Подробности в консоли.');
         }
-    }
 
         loadData();  // Загружаем данные при запуске
 
