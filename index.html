@@ -183,6 +183,15 @@
                 regenerationRate = data.regenerationRate || 1;
                 clickUpgrades = data.clickUpgrades || clickUpgrades;
                 limitUpgrades = data.limitUpgrades || limitUpgrades;
+
+                // Обновляем состояние кнопок после загрузки
+                clickUpgrades.forEach(upgrade => {
+                    upgrade.bought = data.clickUpgrades?.find(u => u.id === upgrade.id)?.bought || false;
+                });
+                limitUpgrades.forEach(upgrade => {
+                    upgrade.bought = data.limitUpgrades?.find(u => u.id === upgrade.id)?.bought || false;
+                });
+
                 updateDisplay();
                 renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
                 renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
@@ -194,17 +203,22 @@
             limitDisplay.textContent = `Клики: ${currentClicks}/${clickLimit} (+${regenerationRate}/сек)`;
         };
 
-        const renderUpgrades = (upgrades, container, type) => {
-            container.innerHTML = ''; // Очищаем контейнер перед рендерингом
+       const renderUpgrades = (upgrades, container, type) => {
+            container.innerHTML = '';
             upgrades.forEach(upgrade => {
                 const item = document.createElement('div');
                 item.classList.add('shop-item');
+
+                const button = document.createElement('button');
+                button.dataset.id = upgrade.id;
+                button.textContent = upgrade.bought ? 'Куплено' : 'Купить';
+                button.disabled = upgrade.bought;  // Disable if bought
+
                 item.innerHTML = `
                     <span>${upgrade.name} (Цена: ${upgrade.cost})</span>
-                    <button data-id="${upgrade.id}" ${upgrade.bought ? 'disabled' : ''}>
-                        ${upgrade.bought ? 'Куплено' : 'Купить'}
-                    </button>
                 `;
+
+                item.appendChild(button);
                 container.appendChild(item);
             });
 
@@ -220,11 +234,11 @@
                             clickMultiplier *= upgrade.multiplier;
                         } else {
                             regenerationRate += upgrade.addedRegen;
-                            clickLimit *= upgrade.multiplier;
+                            clickLimit *= upgrade.multiplier
                         }
 
                         updateDisplay();
-                        renderUpgrades(upgrades, container, type); // Перерендерить
+                        renderUpgrades(upgrades, container, type);
                         await saveData();
                     }
                 });
@@ -261,7 +275,7 @@
         renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
         renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
 
-         const saveData = async () => {
+        const saveData = async () => {
             const response = await fetch(SERVER_URL, {
                 method: 'POST',
                 headers: {
@@ -269,7 +283,9 @@
                 },
                 body: JSON.stringify({
                     userId: tg.initDataUnsafe.user.id,
-                    count, clickLimit, currentClicks, clickMultiplier, regenerationRate, clickUpgrades, limitUpgrades
+                    count, clickLimit, currentClicks, clickMultiplier, regenerationRate,
+                    clickUpgrades: clickUpgrades.map(u => ({ id: u.id, bought: u.bought })),
+                    limitUpgrades: limitUpgrades.map(u => ({ id: u.id, bought: u.bought }))
                 })
             });
             if (!response.ok) {
