@@ -170,72 +170,55 @@
             { id: 4, name: '+5 клика/сек', cost: 50000, addedRegen: 5, multiplier: 5, bought: false }
         ];
 
-        const SERVER_URL = 'https://12da-185-193-49-249.ngrok-free.app'; //**ВАЖНО: ЗАМЕНИЛИ!**
+        const SERVER_URL = 'YOUR_SERVER_URL';
 
-        // Функция загрузки данных с сервера
-        async function loadData() {
-            const userId = tg.initDataUnsafe.user.id;
-            console.log("User ID:", userId);
-
-            const loadUrl = `${SERVER_URL}/load?userId=${userId}`;
-            console.log("Запрос к серверу (загрузка):", loadUrl);
-
-            try {
-                const response = await fetch(loadUrl);
-                console.log("Ответ сервера (загрузка):", response); // Log the raw response
-
-                if (!response.ok) {
-                    const message = `Ошибка загрузки данных: HTTP статус ${response.status}, ${response.statusText}`;
-                    console.error(message);
-                    alert(message);
-                    throw new Error(message);
-                }
-
-                const data = await response.json();
-                console.log("Данные загружены с сервера:", data);
-
+        // Загрузка данных с сервера
+        fetch(`${SERVER_URL}/load?userId=${tg.initDataUnsafe.user.id}`)
+            .then(response => response.json())
+            .then(data => {
                 count = data.count || 0;
                 clickLimit = data.clickLimit || 1000;
                 currentClicks = data.currentClicks || 1000;
                 clickMultiplier = data.clickMultiplier || 1;
                 regenerationRate = data.regenerationRate || 1;
+                clickUpgrades = data.clickUpgrades || clickUpgrades;
+                limitUpgrades = data.limitUpgrades || limitUpgrades;
 
-                // Обновляем состояние улучшений
+                // Обновляем состояние кнопок после загрузки
                 clickUpgrades.forEach(upgrade => {
-                    const savedUpgrade = data.clickUpgrades?.find(u => u.id === upgrade.id);
-                    upgrade.bought = savedUpgrade ? savedUpgrade.bought : false;
+                    upgrade.bought = data.clickUpgrades?.find(u => u.id === upgrade.id)?.bought || false;
                 });
                 limitUpgrades.forEach(upgrade => {
-                    const savedUpgrade = data.limitUpgrades?.find(u => u.id === upgrade.id);
-                    upgrade.bought = savedUpgrade ? savedUpgrade.bought : false;
+                    upgrade.bought = data.limitUpgrades?.find(u => u.id === upgrade.id)?.bought || false;
                 });
 
                 updateDisplay();
                 renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
                 renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
-
-            } catch (error) {
-                console.error("Ошибка при загрузке данных:", error);
-                alert("Ошибка при загрузке данных! Пожалуйста, перезагрузите страницу.");
-            }
-        }
+            })
+            .catch(error => console.error('Ошибка загрузки данных:', error));
 
         const updateDisplay = () => {
             countDisplay.textContent = count;
             limitDisplay.textContent = `Клики: ${currentClicks}/${clickLimit} (+${regenerationRate}/сек)`;
         };
 
-        const renderUpgrades = (upgrades, container, type) => {
+       const renderUpgrades = (upgrades, container, type) => {
             container.innerHTML = '';
             upgrades.forEach(upgrade => {
                 const item = document.createElement('div');
                 item.classList.add('shop-item');
+
+                const button = document.createElement('button');
+                button.dataset.id = upgrade.id;
+                button.textContent = upgrade.bought ? 'Куплено' : 'Купить';
+                button.disabled = upgrade.bought;  // Disable if bought
+
                 item.innerHTML = `
                     <span>${upgrade.name} (Цена: ${upgrade.cost})</span>
-                    <button data-id="${upgrade.id}" ${upgrade.bought ? 'disabled' : ''}>
-                        ${upgrade.bought ? 'Куплено' : 'Купить'}
-                    </button>
                 `;
+
+                item.appendChild(button);
                 container.appendChild(item);
             });
 
@@ -251,7 +234,7 @@
                             clickMultiplier *= upgrade.multiplier;
                         } else {
                             regenerationRate += upgrade.addedRegen;
-                            clickLimit *= upgrade.multiplier;
+                            clickLimit *= upgrade.multiplier
                         }
 
                         updateDisplay();
@@ -289,50 +272,26 @@
             });
         });
 
-        async function saveData() {
-            try {
-                const userId = tg.initDataUnsafe.user.id;
+        renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
+        renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
 
-                const dataToSend = {
-                    userId: userId,
-                    count: count,
-                    clickLimit: clickLimit,
-                    currentClicks: currentClicks,
-                    clickMultiplier: clickMultiplier,
-                    regenerationRate: regenerationRate,
+        const saveData = async () => {
+            const response = await fetch(SERVER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userId: tg.initDataUnsafe.user.id,
+                    count, clickLimit, currentClicks, clickMultiplier, regenerationRate,
                     clickUpgrades: clickUpgrades.map(u => ({ id: u.id, bought: u.bought })),
                     limitUpgrades: limitUpgrades.map(u => ({ id: u.id, bought: u.bought }))
-                };
-
-                console.log("Отправляемые данные (сохранение):", dataToSend);
-
-                const response = await fetch(SERVER_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(dataToSend)
-                });
-
-                console.log("Ответ сервера (сохранение):", response); // Log raw response
-
-                if (!response.ok) {
-                    const message = `Ошибка сохранения данных: HTTP статус ${response.status}, ${response.statusText}`;
-                    console.error(message);
-                    alert(message);
-                    throw new Error(message);
-                }
-
-                const responseData = await response.json();
-                console.log('Данные успешно сохранены:', responseData);
-            } catch (error) {
-                console.error('Ошибка при сохранении данных:', error);
-                alert('Ошибка при сохранении данных! Пожалуйста, попробуйте еще раз. Подробности в консоли.');
+                })
+            });
+            if (!response.ok) {
+                console.error('Ошибка сохранения данных:', response.status);
             }
-        }
-
-        loadData();  // Загружаем данные при запуске
-
+        };
     </script>
 </body>
 </html>
