@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clicker Mini App</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+
+        .tab-buttons {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .tab-button {
+            padding: 10px 20px;
+            background-color: #ddd;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+
+        .tab-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .coin {
+            width: 150px;
+            height: 150px;
+            background-color: gold;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: transform 0.1s ease;
+        }
+
+        .coin:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .count {
+            font-size: 3em;
+            margin-top: 20px;
+        }
+
+        .limit-display {
+            font-size: 1.2em;
+            margin-top: 10px;
+            color: #555;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .label {
+            margin-bottom: 10px;
+        }
+
+        .shop-container {
+            width: 80%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .shop-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+
+        .shop-item button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .shop-item button:hover {
+            background-color: #45a049;
+        }
+
+        .shop-item span {
+            margin-right: 10px;
+        }
+
+        .tab-content {
+            display: none;
+            width: 100%;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+    <div class="tab-buttons">
+        <button class="tab-button active" data-tab="clicker">Кликер</button>
+        <button class="tab-button" data-tab="clickUpgrades">Усиление кликов</button>
+        <button class="tab-button" data-tab="limitUpgrades">Усиление лимита</button>
+    </div>
+
+    <div id="clicker" class="tab-content active container">
+        <p class="label">Тапни по монете</p>
+        <div class="coin" id="coin"></div>
+        <div class="count" id="count">0</div>
+        <div class="limit-display" id="limitDisplay"></div>
+    </div>
+
+    <div id="clickUpgrades" class="tab-content shop-container"></div>
+    <div id="limitUpgrades" class="tab-content shop-container"></div>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+
+        let count = 0;
+        let clickLimit = 1000;
+        let currentClicks = 1000;
+        let clickMultiplier = 1;
+        const coin = document.getElementById('coin');
+        const countDisplay = document.getElementById('count');
+        const limitDisplay = document.getElementById('limitDisplay');
+        let isSaving = false;
+        const clickUpgradesContainer = document.getElementById('clickUpgrades');
+        const limitUpgradesContainer = document.getElementById('limitUpgrades');
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+
+        let clickUpgrades = [
+            { id: 1, name: 'Усилитель кликов x2', cost: 10, multiplier: 2, bought: false },
+            { id: 2, name: 'Усилитель кликов x3', cost: 100, multiplier: 3, bought: false },
+            { id: 3, name: 'Усилитель кликов x4', cost: 1000, multiplier: 4, bought: false },
+            { id: 4, name: 'Усилитель кликов x5', cost: 10000, multiplier: 5, bought: false }
+        ];
+
+        let limitUpgrades = [
+            { id: 1, name: '+2 клика/сек', cost: 50, addedClicks: 2, bought: false },
+            { id: 2, name: '+3 клика/сек', cost: 500, addedClicks: 3, bought: false },
+            { id: 3, name: '+4 клика/сек', cost: 5000, addedClicks: 4, bought: false },
+            { id: 4, name: '+5 клика/сек', cost: 50000, addedClicks: 5, bought: false }
+        ];
+
+        // Load saved data from CloudStorage (replace with your actual loading logic)
+        tg.CloudStorage.getItem('clickerData', (err, value) => {
+            if (!err && value) {
+                const data = JSON.parse(value);
+                count = data.count || 0;
+                clickLimit = data.clickLimit || 1000;
+                currentClicks = data.currentClicks || 1000;
+                clickMultiplier = data.clickMultiplier || 1;
+                clickUpgrades = data.clickUpgrades || clickUpgrades;
+                limitUpgrades = data.limitUpgrades || limitUpgrades;
+            }
+            updateDisplay();
+            renderUpgrades();
+        });
+
+        const saveData = () => {
+            tg.CloudStorage.setItem('clickerData', JSON.stringify({
+                count, clickLimit, currentClicks, clickMultiplier, clickUpgrades, limitUpgrades
+            }), err => {
+                if (err) console.error("Error saving data:", err);
+            });
+        };
+
+        const updateDisplay = () => {
+            countDisplay.textContent = count;
+            limitDisplay.textContent = `Клики: ${currentClicks}/${clickLimit} (+1/сек)`;
+        };
+
+        const renderUpgrades = (upgrades, container, type) => {
+            container.innerHTML = '';
+            upgrades.forEach(upgrade => {
+                const item = document.createElement('div');
+                item.classList.add('shop-item');
+                item.innerHTML = `
+                    <span>${upgrade.name} (Цена: ${upgrade.cost})</span>
+                    <button data-id="${upgrade.id}" ${upgrade.bought ? 'disabled' : ''}>
+                        ${upgrade.bought ? 'Куплено' : 'Купить'}
+                    </button>
+                `;
+                container.appendChild(item);
+            });
+            container.querySelectorAll('button').forEach(button => {
+                button.addEventListener('click', async () => {
+                    const id = parseInt(button.dataset.id);
+                    const upgrade = upgrades.find(u => u.id === id);
+                    if (upgrade && count >= upgrade.cost && !upgrade.bought) {
+                        count -= upgrade.cost;
+                        if (type === 'click') clickMultiplier *= upgrade.multiplier;
+                        else clickLimit += upgrade.addedClicks; //Add to click limit
+                        upgrade.bought = true;
+                        updateDisplay();
+                        renderUpgrades(upgrades, container, type);
+                        saveData();
+                    }
+                });
+            });
+        };
+
+        coin.addEventListener('click', () => {
+            if (currentClicks > 0) {
+                count += clickMultiplier;
+                currentClicks--;
+                updateDisplay();
+                saveData();
+            }
+        });
+
+        setInterval(() => {
+            if (currentClicks < clickLimit) {
+                currentClicks++;
+                updateDisplay();
+                saveData();
+            }
+        }, 1000);
+
+        renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
+        renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const tabId = button.dataset.tab;
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                tabContents.forEach(tab => tab.classList.remove('active'));
+                button.classList.add('active');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+
+    </script>
+</body>
+</html>
