@@ -146,6 +146,8 @@
         let clickLimit = 1000;
         let currentClicks = 1000;
         let clickMultiplier = 1;
+        let regenerationRate = 1;  //Кликов в секунду
+
         const coin = document.getElementById('coin');
         const countDisplay = document.getElementById('count');
         const limitDisplay = document.getElementById('limitDisplay');
@@ -164,13 +166,13 @@
         ];
 
         let limitUpgrades = [
-            { id: 1, name: '+2 клика/сек', cost: 50, addedClicks: 2, bought: false },
-            { id: 2, name: '+3 клика/сек', cost: 500, addedClicks: 3, bought: false },
-            { id: 3, name: '+4 клика/сек', cost: 5000, addedClicks: 4, bought: false },
-            { id: 4, name: '+5 клика/сек', cost: 50000, addedClicks: 5, bought: false }
+            { id: 1, name: '+2 клика/сек', cost: 50, addedRegen: 2, multiplier : 2, bought: false },
+            { id: 2, name: '+3 клика/сек', cost: 500, addedRegen: 3, multiplier : 3, bought: false },
+            { id: 3, name: '+4 клика/сек', cost: 5000, addedRegen: 4, multiplier : 4, bought: false },
+            { id: 4, name: '+5 клика/сек', cost: 50000, addedRegen: 5,  multiplier : 5, bought: false }
         ];
 
-        // Load saved data from CloudStorage (replace with your actual loading logic)
+        // Load saved data from CloudStorage
         tg.CloudStorage.getItem('clickerData', (err, value) => {
             if (!err && value) {
                 const data = JSON.parse(value);
@@ -178,75 +180,89 @@
                 clickLimit = data.clickLimit || 1000;
                 currentClicks = data.currentClicks || 1000;
                 clickMultiplier = data.clickMultiplier || 1;
+                regenerationRate = data.regenerationRate || 1;
                 clickUpgrades = data.clickUpgrades || clickUpgrades;
                 limitUpgrades = data.limitUpgrades || limitUpgrades;
             }
             updateDisplay();
-            renderUpgrades();
+            renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
+            renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
+
         });
 
-        const saveData = () => {
-            tg.CloudStorage.setItem('clickerData', JSON.stringify({
-                count, clickLimit, currentClicks, clickMultiplier, clickUpgrades, limitUpgrades
-            }), err => {
-                if (err) console.error("Error saving data:", err);
-            });
-        };
-
-        const updateDisplay = () => {
-            countDisplay.textContent = count;
-            limitDisplay.textContent = `Клики: ${currentClicks}/${clickLimit} (+1/сек)`;
-        };
-
-        const renderUpgrades = (upgrades, container, type) => {
-            container.innerHTML = '';
-            upgrades.forEach(upgrade => {
-                const item = document.createElement('div');
-                item.classList.add('shop-item');
-                item.innerHTML = `
-                    <span>${upgrade.name} (Цена: ${upgrade.cost})</span>
-                    <button data-id="${upgrade.id}" ${upgrade.bought ? 'disabled' : ''}>
-                        ${upgrade.bought ? 'Куплено' : 'Купить'}
-                    </button>
-                `;
-                container.appendChild(item);
-            });
-            container.querySelectorAll('button').forEach(button => {
-                button.addEventListener('click', async () => {
-                    const id = parseInt(button.dataset.id);
-                    const upgrade = upgrades.find(u => u.id === id);
-                    if (upgrade && count >= upgrade.cost && !upgrade.bought) {
-                        count -= upgrade.cost;
-                        if (type === 'click') clickMultiplier *= upgrade.multiplier;
-                        else clickLimit += upgrade.addedClicks; //Add to click limit
-                        upgrade.bought = true;
-                        updateDisplay();
-                        renderUpgrades(upgrades, container, type);
-                        saveData();
+        const saveData = async () => {
+            return new Promise((resolve, reject) => {
+                tg.CloudStorage.setItem('clickerData', JSON.stringify({
+                    count, clickLimit, currentClicks, clickMultiplier, regenerationRate, clickUpgrades, limitUpgrades
+                }), err => {
+                    if (err) {
+                        console.error("Error saving data:", err);
+                        reject(err);
+                    } else {
+                        resolve();
                     }
                 });
             });
         };
 
-        coin.addEventListener('click', () => {
+        const updateDisplay = () => {
+            countDisplay.textContent = count;
+            limitDisplay.textContent = `Клики: ${currentClicks}/${clickLimit} (+${regenerationRate}/сек)`;
+        };
+
+         const renderUpgrades = (upgrades, container, type) => {
+            container.innerHTML = '';
+            upgrades.forEach(upgrade => {
+                if (!upgrade.bought) {  // Рендерить только некупленные
+                    const item = document.createElement('div');
+                    item.classList.add('shop-item');
+                    item.innerHTML = `
+                        <span>${upgrade.name} (Цена: ${upgrade.cost})</span>
+                        <button data-id="${upgrade.id}">Купить</button>
+                    `;
+                    container.appendChild(item);
+                }
+            });
+
+           container.querySelectorAll('button').forEach(button => {
+                button.addEventListener('click', async () => {
+                    const id = parseInt(button.dataset.id);
+                    const upgrade = upgrades.find(u => u.id === id);
+                    if (upgrade && count >= upgrade.cost && !upgrade.bought) {
+                        count -= upgrade.cost;
+                        upgrade.bought = true;
+
+                        if (type === 'click') {
+                            clickMultiplier *= upgrade.multiplier;
+                        } else {
+                            regenerationRate += upgrade.addedRegen;
+                            clickLimit *=upgrade.multiplier;
+                        }
+
+                        updateDisplay();
+                        renderUpgrades(upgrades, container, type);  // Перерендерить после покупки
+                       await saveData(); // Сохранить после покупки
+                    }
+                });
+            });
+        };
+
+        coin.addEventListener('click', async () => {
             if (currentClicks > 0) {
                 count += clickMultiplier;
                 currentClicks--;
                 updateDisplay();
-                saveData();
+              await saveData(); // Сохранять клик сразу же
             }
         });
 
-        setInterval(() => {
+        setInterval(async () => {
             if (currentClicks < clickLimit) {
-                currentClicks++;
+                currentClicks = Math.min(currentClicks + regenerationRate, clickLimit);  //Обновляем реген.
                 updateDisplay();
-                saveData();
+                await saveData(); // Сохранять регенерацию кликов
             }
         }, 1000);
-
-        renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
-        renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
 
         tabButtons.forEach(button => {
             button.addEventListener('click', () => {
@@ -257,6 +273,8 @@
                 document.getElementById(tabId).classList.add('active');
             });
         });
+        renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
+        renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
 
     </script>
 </body>
