@@ -146,17 +146,15 @@
         let clickLimit = 1000;
         let currentClicks = 1000;
         let clickMultiplier = 1;
-        let regenerationRate = 1;  //Кликов в секунду
+        let regenerationRate = 1;
 
         const coin = document.getElementById('coin');
         const countDisplay = document.getElementById('count');
         const limitDisplay = document.getElementById('limitDisplay');
-        let isSaving = false;
         const clickUpgradesContainer = document.getElementById('clickUpgrades');
         const limitUpgradesContainer = document.getElementById('limitUpgrades');
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
-
 
         let clickUpgrades = [
             { id: 1, name: 'Усилитель кликов x2', cost: 10, multiplier: 2, bought: false },
@@ -166,16 +164,18 @@
         ];
 
         let limitUpgrades = [
-            { id: 1, name: '+2 клика/сек', cost: 50, addedRegen: 2, multiplier : 2, bought: false },
-            { id: 2, name: '+3 клика/сек', cost: 500, addedRegen: 3, multiplier : 3, bought: false },
-            { id: 3, name: '+4 клика/сек', cost: 5000, addedRegen: 4, multiplier : 4, bought: false },
-            { id: 4, name: '+5 клика/сек', cost: 50000, addedRegen: 5,  multiplier : 5, bought: false }
+            { id: 1, name: '+2 клика/сек', cost: 50, addedRegen: 2, multiplier: 2, bought: false },
+            { id: 2, name: '+3 клика/сек', cost: 500, addedRegen: 3, multiplier: 3, bought: false },
+            { id: 3, name: '+4 клика/сек', cost: 5000, addedRegen: 4, multiplier: 4, bought: false },
+            { id: 4, name: '+5 клика/сек', cost: 50000, addedRegen: 5, multiplier: 5, bought: false }
         ];
 
-        // Load saved data from CloudStorage
-        tg.CloudStorage.getItem('clickerData', (err, value) => {
-            if (!err && value) {
-                const data = JSON.parse(value);
+        const SERVER_URL = 'YOUR_SERVER_URL';
+
+        // Загрузка данных с сервера
+        fetch(`${SERVER_URL}/load?userId=${tg.initDataUnsafe.user.id}`)
+            .then(response => response.json())
+            .then(data => {
                 count = data.count || 0;
                 clickLimit = data.clickLimit || 1000;
                 currentClicks = data.currentClicks || 1000;
@@ -183,48 +183,32 @@
                 regenerationRate = data.regenerationRate || 1;
                 clickUpgrades = data.clickUpgrades || clickUpgrades;
                 limitUpgrades = data.limitUpgrades || limitUpgrades;
-            }
-            updateDisplay();
-            renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
-            renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
-
-        });
-
-        const saveData = async () => {
-            return new Promise((resolve, reject) => {
-                tg.CloudStorage.setItem('clickerData', JSON.stringify({
-                    count, clickLimit, currentClicks, clickMultiplier, regenerationRate, clickUpgrades, limitUpgrades
-                }), err => {
-                    if (err) {
-                        console.error("Error saving data:", err);
-                        reject(err);
-                    } else {
-                        resolve();
-                    }
-                });
-            });
-        };
+                updateDisplay();
+                renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
+                renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
+            })
+            .catch(error => console.error('Ошибка загрузки данных:', error));
 
         const updateDisplay = () => {
             countDisplay.textContent = count;
             limitDisplay.textContent = `Клики: ${currentClicks}/${clickLimit} (+${regenerationRate}/сек)`;
         };
 
-         const renderUpgrades = (upgrades, container, type) => {
-            container.innerHTML = '';
+        const renderUpgrades = (upgrades, container, type) => {
+            container.innerHTML = ''; // Очищаем контейнер перед рендерингом
             upgrades.forEach(upgrade => {
-                if (!upgrade.bought) {  // Рендерить только некупленные
-                    const item = document.createElement('div');
-                    item.classList.add('shop-item');
-                    item.innerHTML = `
-                        <span>${upgrade.name} (Цена: ${upgrade.cost})</span>
-                        <button data-id="${upgrade.id}">Купить</button>
-                    `;
-                    container.appendChild(item);
-                }
+                const item = document.createElement('div');
+                item.classList.add('shop-item');
+                item.innerHTML = `
+                    <span>${upgrade.name} (Цена: ${upgrade.cost})</span>
+                    <button data-id="${upgrade.id}" ${upgrade.bought ? 'disabled' : ''}>
+                        ${upgrade.bought ? 'Куплено' : 'Купить'}
+                    </button>
+                `;
+                container.appendChild(item);
             });
 
-           container.querySelectorAll('button').forEach(button => {
+            container.querySelectorAll('button').forEach(button => {
                 button.addEventListener('click', async () => {
                     const id = parseInt(button.dataset.id);
                     const upgrade = upgrades.find(u => u.id === id);
@@ -236,12 +220,12 @@
                             clickMultiplier *= upgrade.multiplier;
                         } else {
                             regenerationRate += upgrade.addedRegen;
-                            clickLimit *=upgrade.multiplier;
+                            clickLimit *= upgrade.multiplier;
                         }
 
                         updateDisplay();
-                        renderUpgrades(upgrades, container, type);  // Перерендерить после покупки
-                       await saveData(); // Сохранить после покупки
+                        renderUpgrades(upgrades, container, type); // Перерендерить
+                        await saveData();
                     }
                 });
             });
@@ -252,15 +236,15 @@
                 count += clickMultiplier;
                 currentClicks--;
                 updateDisplay();
-              await saveData(); // Сохранять клик сразу же
+                await saveData();
             }
         });
 
         setInterval(async () => {
             if (currentClicks < clickLimit) {
-                currentClicks = Math.min(currentClicks + regenerationRate, clickLimit);  //Обновляем реген.
+                currentClicks = Math.min(currentClicks + regenerationRate, clickLimit);
                 updateDisplay();
-                await saveData(); // Сохранять регенерацию кликов
+                await saveData();
             }
         }, 1000);
 
@@ -273,9 +257,25 @@
                 document.getElementById(tabId).classList.add('active');
             });
         });
+
         renderUpgrades(clickUpgrades, clickUpgradesContainer, 'click');
         renderUpgrades(limitUpgrades, limitUpgradesContainer, 'limit');
 
+         const saveData = async () => {
+            const response = await fetch(SERVER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userId: tg.initDataUnsafe.user.id,
+                    count, clickLimit, currentClicks, clickMultiplier, regenerationRate, clickUpgrades, limitUpgrades
+                })
+            });
+            if (!response.ok) {
+                console.error('Ошибка сохранения данных:', response.status);
+            }
+        };
     </script>
 </body>
 </html>
